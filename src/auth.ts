@@ -1,4 +1,4 @@
-import type { McpAuthEnv, McpKeyMeta, ResolvedAuth } from "./types.js";
+import type { McpAuthEnv, McpCredentials, McpKeyMeta, ResolvedAuth } from "./types.js";
 
 /**
  * Resolve a Bearer token to an authenticated identity.
@@ -7,15 +7,17 @@ import type { McpAuthEnv, McpKeyMeta, ResolvedAuth } from "./types.js";
  * 1. MCP API key (mcp_ prefix) — KV lookup, service scope check, credentials extraction
  * 2. WorkOS JWT fallback — JWKS signature verification
  */
-export function createTokenResolver(serviceId: string) {
+export function createTokenResolver<TCredentials extends McpCredentials = McpCredentials>(
+  serviceId: string,
+) {
   return async function resolveExternalToken(input: {
     token: string;
     request: Request;
     env: McpAuthEnv;
-  }): Promise<{ props: ResolvedAuth; audience?: string | string[] } | null> {
+  }): Promise<{ props: ResolvedAuth<TCredentials>; audience?: string | string[] } | null> {
     // Path 1: MCP API key
     if (input.token.startsWith("mcp_")) {
-      const meta = await input.env.MCP_KEYS.get<McpKeyMeta>(input.token, "json");
+      const meta = await input.env.MCP_KEYS.get<McpKeyMeta<TCredentials>>(input.token, "json");
       if (meta && meta.service === serviceId) {
         return {
           props: {
@@ -33,7 +35,11 @@ export function createTokenResolver(serviceId: string) {
     // Path 2: WorkOS JWT
     try {
       const [headerB64, payloadB64, signatureB64] = input.token.split(".");
-      const header = JSON.parse(atob(headerB64));
+      if (!headerB64 || !payloadB64 || !signatureB64) {
+        return null;
+      }
+
+      const header = decodeBase64UrlJson<{ kid?: string }>(headerB64);
       const jwksResponse = await fetch("https://api.workos.com/sso/jwks");
       if (!jwksResponse.ok) return null;
       const jwks = (await jwksResponse.json()) as { keys: JsonWebKey[] };
@@ -50,9 +56,8 @@ export function createTokenResolver(serviceId: string) {
         ["verify"],
       );
 
-      const signatureBytes = Uint8Array.from(
-        atob(signatureB64.replace(/-/g, "+").replace(/_/g, "/")),
-        (char) => char.charCodeAt(0),
+      const signatureBytes = Uint8Array.from(decodeBase64Url(signatureB64), (char) =>
+        char.charCodeAt(0),
       );
       const dataBytes = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
       const valid = await crypto.subtle.verify(
@@ -63,7 +68,12 @@ export function createTokenResolver(serviceId: string) {
       );
       if (!valid) return null;
 
-      const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
+      const payload = decodeBase64UrlJson<{
+        azp?: string;
+        exp?: number;
+        org_id?: string;
+        sub?: string;
+      }>(payloadB64);
       if (payload.exp && payload.exp < Date.now() / 1000) return null;
 
       return {
@@ -78,4 +88,14 @@ export function createTokenResolver(serviceId: string) {
       return null;
     }
   };
+}
+
+function decodeBase64UrlJson<T>(value: string): T {
+  return JSON.parse(decodeBase64Url(value)) as T;
+}
+
+function decodeBase64Url(value: string): string {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = "=".repeat((4 - (normalized.length % 4)) % 4);
+  return atob(`${normalized}${padding}`);
 }

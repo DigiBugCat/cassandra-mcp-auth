@@ -4,7 +4,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { pushMetrics, counter } from "cassandra-observability";
 import { createTokenResolver } from "./auth.js";
 import { createWorkOSHandler } from "./workos-handler.js";
-import type { McpAuthEnv, McpAgentProps, McpWorkerConfig } from "./types.js";
+import type {
+  McpAuthEnv,
+  McpAgentProps,
+  McpCredentials,
+  McpWorkerConfig,
+} from "./types.js";
 
 /**
  * Create a fully-wired MCP Worker with auth, OAuth, and metrics.
@@ -24,15 +29,18 @@ import type { McpAuthEnv, McpAgentProps, McpWorkerConfig } from "./types.js";
  * export default worker;
  * ```
  */
-export function createMcpWorker<TEnv extends McpAuthEnv = McpAuthEnv>(
-  config: McpWorkerConfig<TEnv>,
+export function createMcpWorker<
+  TEnv extends McpAuthEnv = McpAuthEnv,
+  TCredentials extends McpCredentials = McpCredentials,
+>(
+  config: McpWorkerConfig<TEnv, TCredentials>,
 ) {
-  const resolveExternalToken = createTokenResolver(config.serviceId);
+  const resolveExternalToken = createTokenResolver<TCredentials>(config.serviceId);
 
   // Create the McpAgent subclass dynamically.
   // server typed as `any` to avoid McpServer version mismatch between agents and @modelcontextprotocol/sdk.
   // wrangler deduplicates at bundle time so the runtime type is always correct.
-  class McpAgentClass extends McpAgent<TEnv, Record<string, never>, McpAgentProps> {
+  class McpAgentClass extends McpAgent<TEnv, Record<string, never>, McpAgentProps<TCredentials>> {
     server: any = new McpServer({
       name: config.name,
       version: config.version || "1.0.0",
@@ -43,7 +51,7 @@ export function createMcpWorker<TEnv extends McpAuthEnv = McpAuthEnv>(
     }
   }
 
-  const workosHandler = createWorkOSHandler<TEnv>();
+  const workosHandler = createWorkOSHandler<TEnv, TCredentials>();
 
   const oauthProvider = new OAuthProvider({
     apiHandler: McpAgentClass.serve("/mcp"),

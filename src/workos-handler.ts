@@ -1,7 +1,7 @@
 import type { AuthRequest, OAuthHelpers } from "@cloudflare/workers-oauth-provider";
 import { Hono } from "hono";
 import { fetchWorkOSAuthToken, getUpstreamAuthorizeUrl } from "./utils.js";
-import type { McpAgentProps, McpAuthEnv } from "./types.js";
+import type { McpAgentProps, McpAuthEnv, McpCredentials } from "./types.js";
 import {
   bindStateToSession,
   createOAuthState,
@@ -9,7 +9,10 @@ import {
   validateOAuthState,
 } from "./workers-oauth-utils.js";
 
-export function createWorkOSHandler<TEnv extends McpAuthEnv>() {
+export function createWorkOSHandler<
+  TEnv extends McpAuthEnv,
+  TCredentials extends McpCredentials = McpCredentials,
+>() {
   const app = new Hono<{ Bindings: TEnv & { OAUTH_PROVIDER: OAuthHelpers } }>();
 
   app.get("/authorize", async (c) => {
@@ -63,7 +66,7 @@ export function createWorkOSHandler<TEnv extends McpAuthEnv>() {
         email: authResult.email,
         name: authResult.name,
         accessToken: authResult.accessToken,
-      } as McpAgentProps,
+      } as McpAgentProps<TCredentials>,
     });
 
     const headers = new Headers({ Location: redirectTo });

@@ -1,20 +1,34 @@
 export { createMcpWorker } from "./worker.js";
-export { createTokenResolver } from "./auth.js";
-export { createWorkOSHandler } from "./workos-handler.js";
-export {
+import {
+  createTokenResolver,
+  createWorkOSHandler,
   createOAuthState,
   bindStateToSession,
   validateOAuthState,
   OAuthError,
-} from "./workers-oauth-utils.js";
-export {
   getUpstreamAuthorizeUrl,
   fetchWorkOSAuthToken,
-} from "./utils.js";
+} from "./advanced.js";
+
+/**
+ * Escape hatches for services that need to bypass the standard `createMcpWorker()` path.
+ * Most consumers should stick to `createMcpWorker()` and the exported types above.
+ */
+export const advanced = {
+  createTokenResolver,
+  createWorkOSHandler,
+  createOAuthState,
+  bindStateToSession,
+  validateOAuthState,
+  OAuthError,
+  getUpstreamAuthorizeUrl,
+  fetchWorkOSAuthToken,
+} as const;
 
 export type {
   McpAuthEnv,
   McpAgentProps,
+  McpCredentials,
   McpKeyMeta,
   McpWorkerConfig,
   ResolvedAuth,

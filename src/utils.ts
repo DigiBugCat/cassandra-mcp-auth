@@ -41,6 +41,7 @@ export async function fetchWorkOSAuthToken({
       client_secret,
       code,
       grant_type: "authorization_code",
+      redirect_uri,
     }),
   });
 

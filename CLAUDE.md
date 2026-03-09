@@ -11,7 +11,8 @@ Consumed via `github:DigiBugCat/cassandra-mcp-auth` in Worker `package.json` fil
 ```
 cassandra-mcp-auth/
 ├── src/
-│   ├── index.ts               # Re-exports
+│   ├── index.ts               # Public API: createMcpWorker + types + advanced escape hatch
+│   ├── advanced.ts            # Lower-level exports for custom integrations
 │   ├── types.ts               # McpAuthEnv, ResolvedAuth, McpWorkerConfig
 │   ├── auth.ts                # resolveExternalToken (mcp_ key + WorkOS JWT)
 │   ├── worker.ts              # createMcpWorker() factory
@@ -28,11 +29,15 @@ cassandra-mcp-auth/
 ```ts
 import { createMcpWorker } from "cassandra-mcp-auth";
 
-const { default: worker, McpAgentClass } = createMcpWorker({
+interface MyCredentials {
+  external_api_token: string;
+}
+
+const { default: worker, McpAgentClass } = createMcpWorker<Env, MyCredentials>({
   serviceId: "my-service",
   name: "My MCP Service",
   registerTools(server, env, auth) {
-    // auth.credentials has per-key service credentials (if set)
+    // auth.credentials is typed as MyCredentials | undefined
     server.registerTool("my_tool", { ... }, async (args) => { ... });
   },
 });
@@ -60,4 +65,10 @@ Each Worker using this package needs:
 
 ## Per-Key Credentials
 
-Services that need per-user credentials (e.g. Pushover user key) store them in the MCP key metadata via the portal. The `createTokenResolver` extracts `credentials` from key metadata and makes them available as `auth.credentials` in `registerTools`.
+Services that need per-user credentials (e.g. Pushover user key) store them in the MCP key metadata via the portal. `createMcpWorker()` carries those credentials through to `auth.credentials` in `registerTools`, and services can type that shape via the second generic parameter.
+
+## Advanced API
+
+`createMcpWorker()` is the blessed path for normal services.
+
+If a service really does need lower-level control, import the `advanced` namespace from the package root and reach for `advanced.createTokenResolver`, `advanced.createWorkOSHandler`, or the OAuth helpers explicitly.
