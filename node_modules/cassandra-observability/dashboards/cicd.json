@@ -1,0 +1,160 @@
+{
+  "uid": "cicd-overview",
+  "title": "CI/CD & ARC Runners",
+  "tags": ["cassandra", "cicd"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "scale_set",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "" },
+        "query": "label_values(gha_completed_jobs_total, name)",
+        "current": { "text": "All", "value": "$__all" },
+        "includeAll": true,
+        "multi": false,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Completed Jobs",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [{ "expr": "sum(gha_completed_jobs_total{name=~\"$scale_set\"}) or vector(0)" }],
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "blue" } } }
+    },
+    {
+      "id": 2,
+      "title": "Job Queue Depth",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [{ "expr": "sum(gha_assigned_jobs{name=~\"$scale_set\"}) or vector(0)" }],
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "value": null, "color": "green" }, { "value": 2, "color": "yellow" }, { "value": 5, "color": "red" }] } } }
+    },
+    {
+      "id": 3,
+      "title": "Active Runners",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [{ "expr": "sum(gha_controller_running_ephemeral_runners) or vector(0)" }],
+      "options": { "colorMode": "background", "graphMode": "area", "textMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" } } }
+    },
+    {
+      "id": 4,
+      "title": "Failed Runners",
+      "type": "stat",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus" },
+      "targets": [{ "expr": "sum(gha_controller_failed_ephemeral_runners) or vector(0)" }],
+      "options": { "colorMode": "background", "graphMode": "none", "textMode": "value" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "steps": [{ "value": null, "color": "green" }, { "value": 1, "color": "orange" }, { "value": 3, "color": "red" }] } } }
+    },
+    {
+      "id": 10,
+      "title": "Job Activity",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "id": 11,
+      "title": "Job Start/Complete Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(rate(gha_started_jobs_total{name=~\"$scale_set\"}[5m])) by (name)", "legendFormat": "started — {{name}}" },
+        { "expr": "sum(rate(gha_completed_jobs_total{name=~\"$scale_set\"}[5m])) by (name)", "legendFormat": "completed — {{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops", "custom": { "fillOpacity": 15, "lineWidth": 2 } } }
+    },
+    {
+      "id": 12,
+      "title": "Job Queue Depth Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "gha_assigned_jobs{name=~\"$scale_set\"}", "legendFormat": "queued — {{name}}" },
+        { "expr": "gha_running_jobs{name=~\"$scale_set\"}", "legendFormat": "running — {{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "lineWidth": 2, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "id": 20,
+      "title": "Runner Status",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "panels": []
+    },
+    {
+      "id": 21,
+      "title": "Runner Count Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "gha_controller_running_ephemeral_runners", "legendFormat": "running" },
+        { "expr": "gha_controller_pending_ephemeral_runners", "legendFormat": "pending" },
+        { "expr": "gha_controller_failed_ephemeral_runners", "legendFormat": "failed" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 15, "lineWidth": 2 } } }
+    },
+    {
+      "id": 22,
+      "title": "Busy vs Idle Runners",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "sum(gha_busy_runners{name=~\"$scale_set\"}) by (name)", "legendFormat": "busy — {{name}}" },
+        { "expr": "sum(gha_idle_runners{name=~\"$scale_set\"}) by (name)", "legendFormat": "idle — {{name}}" }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 15, "lineWidth": 2 } } }
+    },
+    {
+      "id": 30,
+      "title": "Job Duration",
+      "type": "row",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
+      "panels": []
+    },
+    {
+      "id": 31,
+      "title": "Job Execution Duration (p50 / p95 / p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(gha_job_execution_duration_seconds_bucket{name=~\"$scale_set\"}[1h])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(gha_job_execution_duration_seconds_bucket{name=~\"$scale_set\"}[1h])) by (le))", "legendFormat": "p95" },
+        { "expr": "histogram_quantile(0.99, sum(rate(gha_job_execution_duration_seconds_bucket{name=~\"$scale_set\"}[1h])) by (le))", "legendFormat": "p99" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2 } } }
+    },
+    {
+      "id": 32,
+      "title": "Job Startup Duration (p50 / p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(gha_job_startup_duration_seconds_bucket{name=~\"$scale_set\"}[1h])) by (le))", "legendFormat": "p50" },
+        { "expr": "histogram_quantile(0.95, sum(rate(gha_job_startup_duration_seconds_bucket{name=~\"$scale_set\"}[1h])) by (le))", "legendFormat": "p95" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "custom": { "fillOpacity": 10, "lineWidth": 2 } } }
+    }
+  ],
+  "schemaVersion": 39
+}
