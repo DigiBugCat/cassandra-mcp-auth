@@ -21,7 +21,7 @@ cassandra-mcp-auth/
 │   └── utils.ts               # WorkOS token exchange
 ├── package.json
 ├── tsconfig.json
-└── .github/workflows/ci.yml   # type-check only
+└── .woodpecker.yaml            # type-check only
 ```
 
 ## Usage
