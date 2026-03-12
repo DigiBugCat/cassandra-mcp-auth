@@ -67,25 +67,51 @@ describe("bindStateToSession", () => {
 });
 
 describe("validateOAuthState", () => {
-  it("throws on missing state parameter", async () => {
+  it("throws on missing state parameter and no cookie", async () => {
     const kv = createMockKV();
     const request = new Request("https://example.com/callback");
 
     await expect(validateOAuthState(request, kv)).rejects.toThrow(OAuthError);
   });
 
-  it("throws on invalid/expired state", async () => {
+  it("throws on invalid/expired state from query", async () => {
     const kv = createMockKV();
     const request = new Request("https://example.com/callback?state=expired-token");
 
     await expect(validateOAuthState(request, kv)).rejects.toThrow(OAuthError);
   });
 
-  it("throws when session cookie is missing", async () => {
+  it("validates successfully with state in query and matching cookie", async () => {
     const kv = createMockKV();
-    // Store state in KV
-    kv._store.set("oauth:state:valid-token", JSON.stringify({ clientId: "test" }));
-    const request = new Request("https://example.com/callback?state=valid-token");
+    const oauthReq = { clientId: "test" };
+    kv._store.set("oauth:state:valid-token", JSON.stringify(oauthReq));
+    const request = new Request("https://example.com/callback?state=valid-token", {
+      headers: { Cookie: "__Host-CONSENTED_STATE=valid-token" },
+    });
+
+    const result = await validateOAuthState(request, kv);
+    expect(result.oauthReqInfo).toEqual(oauthReq);
+    expect(kv._store.has("oauth:state:valid-token")).toBe(false);
+  });
+
+  it("validates successfully with state only in cookie (WorkOS AuthKit flow)", async () => {
+    const kv = createMockKV();
+    const oauthReq = { clientId: "test" };
+    kv._store.set("oauth:state:cookie-token", JSON.stringify(oauthReq));
+    const request = new Request("https://example.com/callback?code=some-code", {
+      headers: { Cookie: "__Host-CONSENTED_STATE=cookie-token" },
+    });
+
+    const result = await validateOAuthState(request, kv);
+    expect(result.oauthReqInfo).toEqual(oauthReq);
+  });
+
+  it("throws on CSRF when query state mismatches cookie state", async () => {
+    const kv = createMockKV();
+    kv._store.set("oauth:state:query-token", JSON.stringify({ clientId: "test" }));
+    const request = new Request("https://example.com/callback?state=query-token", {
+      headers: { Cookie: "__Host-CONSENTED_STATE=different-token" },
+    });
 
     await expect(validateOAuthState(request, kv)).rejects.toThrow(OAuthError);
   });

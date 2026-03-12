@@ -51,9 +51,8 @@ export async function createOAuthState(
 
 export async function bindStateToSession(stateToken: string): Promise<BindStateResult> {
   const consentedStateCookieName = "__Host-CONSENTED_STATE";
-  const hashHex = await hashValue(stateToken);
   return {
-    setCookie: `${consentedStateCookieName}=${hashHex}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=600`,
+    setCookie: `${consentedStateCookieName}=${stateToken}; HttpOnly; Secure; Path=/; SameSite=Lax; Max-Age=600`,
   };
 }
 
@@ -63,33 +62,36 @@ export async function validateOAuthState(
 ): Promise<ValidateStateResult> {
   const consentedStateCookieName = "__Host-CONSENTED_STATE";
   const url = new URL(request.url);
-  const stateFromQuery = url.searchParams.get("state");
-  if (!stateFromQuery) {
-    throw new OAuthError("invalid_request", "Missing state parameter", 400);
-  }
 
-  const storedDataJson = await kv.get(`oauth:state:${stateFromQuery}`);
-  if (!storedDataJson) {
-    throw new OAuthError("invalid_request", "Invalid or expired state", 400);
-  }
-
+  // Read state token from cookie (set during /authorize)
   const cookieHeader = request.headers.get("Cookie") || "";
   const cookies = cookieHeader.split(";").map((value) => value.trim());
   const consentedStateCookie = cookies.find((value) =>
     value.startsWith(`${consentedStateCookieName}=`),
   );
-  const consentedStateHash = consentedStateCookie
+  const stateFromCookie = consentedStateCookie
     ? consentedStateCookie.substring(consentedStateCookieName.length + 1)
     : null;
-  if (!consentedStateHash) {
+
+  // Use state from query param if available, fall back to cookie.
+  // WorkOS AuthKit doesn't always pass state back in the redirect URL.
+  const stateToken = url.searchParams.get("state") || stateFromCookie;
+  if (!stateToken) {
     throw new OAuthError(
       "invalid_request",
-      "Missing session binding cookie - authorization flow must be restarted",
+      "Missing state parameter and no session cookie - authorization flow must be restarted",
       400,
     );
   }
 
-  if ((await hashValue(stateFromQuery)) !== consentedStateHash) {
+  const storedDataJson = await kv.get(`oauth:state:${stateToken}`);
+  if (!storedDataJson) {
+    throw new OAuthError("invalid_request", "Invalid or expired state", 400);
+  }
+
+  // When state comes from query, verify it matches the cookie for CSRF protection
+  const stateFromQuery = url.searchParams.get("state");
+  if (stateFromQuery && stateFromCookie && stateFromQuery !== stateFromCookie) {
     throw new OAuthError(
       "invalid_request",
       "State token does not match session - possible CSRF attack detected",
@@ -104,7 +106,7 @@ export async function validateOAuthState(
     throw new OAuthError("server_error", "Invalid state data", 500);
   }
 
-  await kv.delete(`oauth:state:${stateFromQuery}`);
+  await kv.delete(`oauth:state:${stateToken}`);
 
   return {
     oauthReqInfo,
@@ -112,9 +114,3 @@ export async function validateOAuthState(
   };
 }
 
-async function hashValue(value: string): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}

@@ -1,7 +1,5 @@
-import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  OAuthError,
   bindStateToSession,
   createOAuthState,
   validateOAuthState,
@@ -34,13 +32,12 @@ describe("workers OAuth helpers", () => {
     ]);
   });
 
-  it("binds the state token to a hashed cookie instead of storing the raw value", async () => {
+  it("binds the state token to a cookie for retrieval on callback", async () => {
     const result = await bindStateToSession("state-123");
 
-    const expectedHash = createHash("sha256").update("state-123").digest("hex");
-    expect(result.setCookie).toContain(`__Host-CONSENTED_STATE=${expectedHash}`);
+    expect(result.setCookie).toContain("__Host-CONSENTED_STATE=state-123");
     expect(result.setCookie).toContain("HttpOnly");
-    expect(result.setCookie).not.toContain("state-123");
+    expect(result.setCookie).toContain("Secure");
   });
 
   it("validates state, clears the session cookie, and deletes the KV record", async () => {
@@ -62,15 +59,29 @@ describe("workers OAuth helpers", () => {
     expect(kv.store.has("oauth:state:state-123")).toBe(false);
   });
 
-  it("rejects callback requests when the binding cookie is missing", async () => {
+  it("validates with state from query even without cookie", async () => {
     const kv = createMockKV();
-    await kv.put("oauth:state:state-123", JSON.stringify({ clientId: "client-1" }));
+    const oauthReqInfo = { clientId: "client-1" };
+    await kv.put("oauth:state:state-123", JSON.stringify(oauthReqInfo));
 
-    await expect(
-      validateOAuthState(new Request("https://worker.example/callback?state=state-123"), kv),
-    ).rejects.toMatchObject<Partial<OAuthError>>({
-      code: "invalid_request",
-      statusCode: 400,
-    });
+    const result = await validateOAuthState(
+      new Request("https://worker.example/callback?state=state-123"),
+      kv,
+    );
+    expect(result.oauthReqInfo).toEqual(oauthReqInfo);
+  });
+
+  it("validates with state from cookie when query param is missing (WorkOS AuthKit)", async () => {
+    const kv = createMockKV();
+    const oauthReqInfo = { clientId: "client-1" };
+    await kv.put("oauth:state:state-123", JSON.stringify(oauthReqInfo));
+
+    const result = await validateOAuthState(
+      new Request("https://worker.example/callback?code=some-code", {
+        headers: { Cookie: "__Host-CONSENTED_STATE=state-123" },
+      }),
+      kv,
+    );
+    expect(result.oauthReqInfo).toEqual(oauthReqInfo);
   });
 });
