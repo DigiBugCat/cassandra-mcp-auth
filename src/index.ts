@@ -1,4 +1,6 @@
 export { createMcpWorker } from "./worker.js";
+export { checkACL, fetchUserCredentials } from "./acl.js";
+export type { AclEnv, AclCheckResult } from "./acl.js";
 import {
   createTokenResolver,
   createWorkOSHandler,
